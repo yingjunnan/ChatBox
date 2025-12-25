@@ -100,10 +100,25 @@ async def get_room(room_id: str):
                 return {"id": row[0], "name": row[1], "password": row[2], "created_at": row[3]}
             return None
 
-async def save_message(room_id: str, username: str, content: str, message_type: str):
+async def save_message(room_id: str, username: str, content: str, message_type: str, user_id: int = None, is_guest: bool = True):
     async with aiosqlite.connect(DATABASE) as db:
         await db.execute(
-            "INSERT INTO messages (room_id, username, content, message_type, created_at) VALUES (?, ?, ?, ?, ?)",
-            (room_id, username, content, message_type, datetime.now().isoformat())
+            "INSERT INTO messages (room_id, username, content, message_type, created_at, user_id, is_guest) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (room_id, username, content, message_type, datetime.now().isoformat(), user_id, is_guest)
         )
         await db.commit()
+
+async def get_room_messages(room_id: str, limit: int = 100):
+    async with aiosqlite.connect(DATABASE) as db:
+        async with db.execute(
+            "SELECT username, content, message_type, created_at FROM messages WHERE room_id = ? ORDER BY created_at DESC LIMIT ?",
+            (room_id, limit)
+        ) as cursor:
+            rows = await cursor.fetchall()
+            messages = [{
+                "username": row[0],
+                "content": row[1],
+                "type": row[2],
+                "timestamp": row[3]
+            } for row in rows]
+            return list(reversed(messages))

@@ -132,6 +132,30 @@ export const useUserStore = defineStore('user', {
           headers: { 'Authorization': `Bearer ${this.accessToken}` }
         })
 
+        if (response.status === 401) {
+          // Token expired, try to refresh
+          const refreshed = await this.refreshAccessToken()
+          if (refreshed) {
+            // Retry with new token
+            const retryResponse = await fetch(`${API_URL}/api/users/me`, {
+              headers: { 'Authorization': `Bearer ${this.accessToken}` }
+            })
+            if (!retryResponse.ok) {
+              throw new Error('Failed to load profile after refresh')
+            }
+            const user = await retryResponse.json()
+            this.userId = user.id
+            this.username = user.username
+            this.displayName = user.display_name || user.username
+            this.email = user.email
+            this.avatarUrl = user.avatar_url
+            return
+          } else {
+            // Refresh failed, clear auth and switch to guest
+            throw new Error('Token refresh failed')
+          }
+        }
+
         if (!response.ok) {
           throw new Error('Failed to load profile')
         }
@@ -144,12 +168,13 @@ export const useUserStore = defineStore('user', {
         this.avatarUrl = user.avatar_url
       } catch (error) {
         console.error('Load profile error:', error)
+        this.clearAuthState()
       }
     },
 
     async updateProfile(data) {
       try {
-        const response = await fetch(`${API_URL}/api/users/me`, {
+        let response = await fetch(`${API_URL}/api/users/me`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -157,6 +182,24 @@ export const useUserStore = defineStore('user', {
           },
           body: JSON.stringify(data)
         })
+
+        if (response.status === 401) {
+          // Token expired, try to refresh
+          const refreshed = await this.refreshAccessToken()
+          if (refreshed) {
+            // Retry with new token
+            response = await fetch(`${API_URL}/api/users/me`, {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${this.accessToken}`
+              },
+              body: JSON.stringify(data)
+            })
+          } else {
+            return { success: false, error: '登录已过期，请重新登录' }
+          }
+        }
 
         if (!response.ok) {
           throw new Error('Failed to update profile')
@@ -205,7 +248,7 @@ export const useUserStore = defineStore('user', {
       localStorage.setItem('refreshToken', this.refreshToken)
     },
 
-    loadAuthState() {
+    async loadAuthState() {
       const accessToken = localStorage.getItem('accessToken')
       const refreshToken = localStorage.getItem('refreshToken')
 
@@ -214,7 +257,7 @@ export const useUserStore = defineStore('user', {
         this.refreshToken = refreshToken
         this.isAuthenticated = true
         this.isGuest = false
-        this.loadUserProfile()
+        await this.loadUserProfile()
       } else {
         this.loadUsername()
       }

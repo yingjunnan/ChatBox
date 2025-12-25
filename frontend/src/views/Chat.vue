@@ -29,7 +29,8 @@ const emojis = ['😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', 
           '👋', '🤚', '🖐️', '✋', '🖖', '👌', '🤏', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '🖕', '👇', '☝️', '👍', '👎',
           '✊', '👊', '🤛', '🤜', '👏', '🙌', '👐', '🤲', '🤝', '🙏', '💪', '🦾', '🦿', '🦵', '🦶', '👂', '🦻', '👃', '🧠', '🦷',]
 
-onMounted(() => {
+onMounted(async () => {
+  await loadHistoricalMessages()
   connectWebSocket()
   notificationSound.value = new Audio('/new-notification.mp3')
 })
@@ -39,6 +40,21 @@ onUnmounted(() => {
     ws.value.close()
   }
 })
+
+async function loadHistoricalMessages() {
+  try {
+    const response = await fetch(`${API_URL}/api/rooms/${route.params.roomId}/messages`)
+    if (response.ok) {
+      const historicalMessages = await response.json()
+      messages.value = historicalMessages
+      nextTick(() => {
+        scrollToBottom()
+      })
+    }
+  } catch (error) {
+    console.error('Failed to load historical messages:', error)
+  }
+}
 
 function connectWebSocket() {
   // 如果 WS_URL 为空，根据当前页面协议动态构建 WebSocket URL

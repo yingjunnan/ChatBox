@@ -6,7 +6,7 @@ import uuid
 import os
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
-from database import init_db, create_room, get_rooms, get_room, save_message
+from database import init_db, create_room, get_rooms, get_room, save_message, get_room_messages
 from models import RegisterRequest, LoginRequest, TokenResponse, UserResponse, UpdateProfileRequest, RefreshTokenRequest, User, ChangePasswordRequest
 from auth import hash_password, verify_password, create_access_token, create_refresh_token, verify_token
 from crud import create_user, get_user_by_username, get_user_by_id, update_user, save_refresh_token, verify_refresh_token, delete_refresh_token, change_password
@@ -87,6 +87,11 @@ async def join_room(room_join: RoomJoin):
     if room["password"] and room["password"] != room_join.password:
         raise HTTPException(status_code=403, detail="Invalid password")
     return {"success": True, "room": room}
+
+@app.get("/api/rooms/{room_id}/messages")
+async def get_messages(room_id: str, limit: int = 100):
+    messages = await get_room_messages(room_id, limit)
+    return messages
 
 @app.post("/api/upload")
 async def upload_file(file: UploadFile = File(...)):
@@ -268,7 +273,7 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, username: Optio
     try:
         while True:
             data = await websocket.receive_json()
-            await save_message(room_id, data["username"], data["content"], data["type"])
+            await save_message(room_id, data["username"], data["content"], data["type"], user_id, is_guest)
             await manager.broadcast(data, room_id)
     except WebSocketDisconnect:
         manager.disconnect(websocket, room_id)
