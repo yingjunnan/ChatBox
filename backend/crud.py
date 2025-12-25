@@ -113,3 +113,12 @@ async def delete_refresh_token(token: str):
     async with aiosqlite.connect(DATABASE) as db:
         await db.execute("DELETE FROM refresh_tokens WHERE token = ?", (token,))
         await db.commit()
+
+async def change_password(user_id: int, new_password_hash: str) -> bool:
+    async with aiosqlite.connect(DATABASE) as db:
+        await db.execute(
+            "UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?",
+            (new_password_hash, datetime.now().isoformat(), user_id)
+        )
+        await db.commit()
+        return True

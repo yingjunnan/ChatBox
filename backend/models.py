@@ -33,6 +33,10 @@ class UpdateProfileRequest(BaseModel):
     email: Optional[EmailStr] = None
     avatar_url: Optional[str] = None
 
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str
+
 class User(BaseModel):
     id: int
     username: str

@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
 import AuthModal from '../components/AuthModal.vue'
+import ProfileEditModal from '../components/ProfileEditModal.vue'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -11,6 +12,7 @@ const rooms = ref([])
 const showCreateModal = ref(false)
 const showJoinModal = ref(false)
 const showAuthModal = ref(false)
+const showProfileModal = ref(false)
 const newRoomName = ref('')
 const newRoomPassword = ref('')
 const joinRoomId = ref('')
@@ -134,9 +136,14 @@ function onAuthSuccess() {
               <div class="text-sm text-gray-500">@{{ userStore.username }}</div>
             </div>
           </div>
-          <button @click="handleLogout" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">
-            登出
-          </button>
+          <div class="flex gap-2">
+            <button @click="showProfileModal = true" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+              编辑资料
+            </button>
+            <button @click="handleLogout" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">
+              登出
+            </button>
+          </div>
         </div>
 
         <!-- Guest User -->
@@ -250,5 +257,6 @@ function onAuthSuccess() {
     </div>
 
     <AuthModal :show="showAuthModal" @close="showAuthModal = false" @success="onAuthSuccess" />
+    <ProfileEditModal :show="showProfileModal" @close="showProfileModal = false" @success="onAuthSuccess" />
   </div>
 </template>

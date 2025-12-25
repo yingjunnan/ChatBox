@@ -7,9 +7,9 @@ import os
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 from database import init_db, create_room, get_rooms, get_room, save_message
-from models import RegisterRequest, LoginRequest, TokenResponse, UserResponse, UpdateProfileRequest, RefreshTokenRequest, User
+from models import RegisterRequest, LoginRequest, TokenResponse, UserResponse, UpdateProfileRequest, RefreshTokenRequest, User, ChangePasswordRequest
 from auth import hash_password, verify_password, create_access_token, create_refresh_token, verify_token
-from crud import create_user, get_user_by_username, get_user_by_id, update_user, save_refresh_token, verify_refresh_token, delete_refresh_token
+from crud import create_user, get_user_by_username, get_user_by_id, update_user, save_refresh_token, verify_refresh_token, delete_refresh_token, change_password
 from dependencies import get_current_user, get_current_user_optional
 from config import REFRESH_TOKEN_EXPIRE_DAYS
 
@@ -215,6 +215,22 @@ async def upload_avatar(file: UploadFile = File(...), current_user: User = Depen
     await update_user(current_user.id, avatar_url=avatar_url)
 
     return {"avatar_url": avatar_url}
+
+@app.post("/api/users/me/password")
+async def change_user_password(request: ChangePasswordRequest, current_user: User = Depends(get_current_user)):
+    # Verify old password
+    if not verify_password(request.old_password, current_user.password_hash):
+        raise HTTPException(status_code=400, detail="旧密码错误")
+
+    # Validate new password
+    if len(request.new_password) < 6:
+        raise HTTPException(status_code=400, detail="新密码至少需要6个字符")
+
+    # Change password
+    new_password_hash = hash_password(request.new_password)
+    await change_password(current_user.id, new_password_hash)
+
+    return {"success": True, "message": "密码修改成功"}
 
 @app.websocket("/ws/{room_id}")
 async def websocket_endpoint(websocket: WebSocket, room_id: str, username: Optional[str] = None, token: Optional[str] = None):
