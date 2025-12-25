@@ -14,6 +14,8 @@ const newRoomPassword = ref('')
 const joinRoomId = ref('')
 const joinRoomName = ref('')
 const joinRoomPassword = ref('')
+const editingUsername = ref(false)
+const tempUsername = ref('')
 
 const API_URL = 'http://localhost:8000'
 
@@ -85,6 +87,23 @@ function directJoin() {
 function resetUsername() {
   userStore.generateUsername()
 }
+
+function startEditUsername() {
+  tempUsername.value = userStore.username
+  editingUsername.value = true
+}
+
+function saveUsername() {
+  if (tempUsername.value.trim()) {
+    userStore.setUsername(tempUsername.value.trim())
+  }
+  editingUsername.value = false
+}
+
+function cancelEditUsername() {
+  editingUsername.value = false
+  tempUsername.value = ''
+}
 </script>
 
 <template>
@@ -92,11 +111,26 @@ function resetUsername() {
     <div class="max-w-4xl mx-auto">
       <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
         <h1 class="text-3xl font-bold text-gray-800 mb-2">聊天室</h1>
-        <div class="flex items-center justify-between">
-          <p class="text-gray-600">当前用户: {{ userStore.username }}</p>
-          <button @click="resetUsername" class="bg-orange-500 text-white px-4 py-2 rounded hover:bg-orange-600 text-sm">
-            重置用户名
-          </button>
+        <div class="flex items-center justify-between gap-3">
+          <div class="flex items-center gap-2 flex-1">
+            <span class="text-gray-600">当前用户:</span>
+            <span v-if="!editingUsername" class="font-medium text-gray-800">{{ userStore.username }}</span>
+            <input v-else v-model="tempUsername" class="px-3 py-1 border rounded flex-1 max-w-xs" placeholder="输入用户名">
+          </div>
+          <div class="flex gap-2">
+            <button v-if="!editingUsername" @click="startEditUsername" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 text-sm">
+              编辑
+            </button>
+            <button v-if="editingUsername" @click="saveUsername" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 text-sm">
+              保存
+            </button>
+            <button v-if="editingUsername" @click="cancelEditUsername" class="bg-gray-400 text-white px-4 py-2 rounded hover:bg-gray-500 text-sm">
+              取消
+            </button>
+            <button @click="resetUsername" class="bg-orange-500 text-white px-4 py-2 rounded hover:bg-orange-600 text-sm">
+              随机生成
+            </button>
+          </div>
         </div>
       </div>
 

@@ -14,6 +14,10 @@ export const useUserStore = defineStore('user', {
       this.username = `${adj}的${noun}${num}`
       localStorage.setItem('username', this.username)
     },
+    setUsername(name) {
+      this.username = name
+      localStorage.setItem('username', this.username)
+    },
     loadUsername() {
       const saved = localStorage.getItem('username')
       if (saved) {
