@@ -10,7 +10,9 @@ async def init_db():
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
                 password TEXT,
-                created_at TEXT NOT NULL
+                created_at TEXT NOT NULL,
+                owner_id INTEGER,
+                is_private BOOLEAN DEFAULT 0
             )
         """)
         await db.execute("""
@@ -21,9 +23,54 @@ async def init_db():
                 content TEXT NOT NULL,
                 message_type TEXT NOT NULL,
                 created_at TEXT NOT NULL,
+                user_id INTEGER,
+                is_guest BOOLEAN DEFAULT 1,
                 FOREIGN KEY (room_id) REFERENCES rooms (id)
             )
         """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                display_name TEXT,
+                email TEXT,
+                avatar_url TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS refresh_tokens (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                token TEXT UNIQUE NOT NULL,
+                expires_at TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+            )
+        """)
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token ON refresh_tokens(token)")
+
+        # Migrate existing tables
+        try:
+            await db.execute("ALTER TABLE messages ADD COLUMN user_id INTEGER")
+        except:
+            pass
+        try:
+            await db.execute("ALTER TABLE messages ADD COLUMN is_guest BOOLEAN DEFAULT 1")
+        except:
+            pass
+        try:
+            await db.execute("ALTER TABLE rooms ADD COLUMN owner_id INTEGER")
+        except:
+            pass
+        try:
+            await db.execute("ALTER TABLE rooms ADD COLUMN is_private BOOLEAN DEFAULT 0")
+        except:
+            pass
+
         await db.commit()
 
 async def create_room(room_id: str, name: str, password: str = None):

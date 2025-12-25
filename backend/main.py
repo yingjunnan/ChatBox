@@ -1,11 +1,17 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import uuid
 import os
 from typing import Dict, List, Optional
+from datetime import datetime, timedelta
 from database import init_db, create_room, get_rooms, get_room, save_message
+from models import RegisterRequest, LoginRequest, TokenResponse, UserResponse, UpdateProfileRequest, RefreshTokenRequest, User
+from auth import hash_password, verify_password, create_access_token, create_refresh_token, verify_token
+from crud import create_user, get_user_by_username, get_user_by_id, update_user, save_refresh_token, verify_refresh_token, delete_refresh_token
+from dependencies import get_current_user, get_current_user_optional
+from config import REFRESH_TOKEN_EXPIRE_DAYS
 
 app = FastAPI()
 
@@ -94,15 +100,151 @@ async def upload_file(file: UploadFile = File(...)):
 
     return {"url": f"/uploads/{file_name}"}
 
+# Authentication endpoints
+@app.post("/api/auth/register", response_model=TokenResponse)
+async def register(request: RegisterRequest):
+    # Check if username already exists
+    existing_user = await get_user_by_username(request.username)
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Username already exists")
+
+    # Validate password length
+    if len(request.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+    # Create user
+    user = await create_user(request.username, request.password, request.display_name, request.email)
+    if not user:
+        raise HTTPException(status_code=500, detail="Failed to create user")
+
+    # Generate tokens
+    access_token = create_access_token({"user_id": user.id, "username": user.username})
+    refresh_token = create_refresh_token({"user_id": user.id})
+
+    # Save refresh token
+    expires_at = (datetime.now() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)).isoformat()
+    await save_refresh_token(user.id, refresh_token, expires_at)
+
+    return TokenResponse(access_token=access_token, refresh_token=refresh_token)
+
+@app.post("/api/auth/login", response_model=TokenResponse)
+async def login(request: LoginRequest):
+    # Get user
+    user = await get_user_by_username(request.username)
+    if not user or not verify_password(request.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+
+    # Generate tokens
+    access_token = create_access_token({"user_id": user.id, "username": user.username})
+    refresh_token = create_refresh_token({"user_id": user.id})
+
+    # Save refresh token
+    expires_at = (datetime.now() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)).isoformat()
+    await save_refresh_token(user.id, refresh_token, expires_at)
+
+    return TokenResponse(access_token=access_token, refresh_token=refresh_token)
+
+@app.post("/api/auth/refresh", response_model=TokenResponse)
+async def refresh(request: RefreshTokenRequest):
+    # Verify refresh token
+    user_id = await verify_refresh_token(request.refresh_token)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
+
+    # Get user
+    user = await get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    # Generate new tokens
+    access_token = create_access_token({"user_id": user.id, "username": user.username})
+    new_refresh_token = create_refresh_token({"user_id": user.id})
+
+    # Delete old refresh token and save new one
+    await delete_refresh_token(request.refresh_token)
+    expires_at = (datetime.now() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)).isoformat()
+    await save_refresh_token(user.id, new_refresh_token, expires_at)
+
+    return TokenResponse(access_token=access_token, refresh_token=new_refresh_token)
+
+@app.post("/api/auth/logout")
+async def logout(request: RefreshTokenRequest, current_user: User = Depends(get_current_user)):
+    await delete_refresh_token(request.refresh_token)
+    return {"success": True}
+
+# User profile endpoints
+@app.get("/api/users/me", response_model=UserResponse)
+async def get_current_user_profile(current_user: User = Depends(get_current_user)):
+    return UserResponse(
+        id=current_user.id,
+        username=current_user.username,
+        display_name=current_user.display_name,
+        email=current_user.email,
+        avatar_url=current_user.avatar_url,
+        created_at=current_user.created_at
+    )
+
+@app.put("/api/users/me", response_model=UserResponse)
+async def update_current_user_profile(request: UpdateProfileRequest, current_user: User = Depends(get_current_user)):
+    updated_user = await update_user(
+        current_user.id,
+        display_name=request.display_name,
+        email=request.email,
+        avatar_url=request.avatar_url
+    )
+    return UserResponse(
+        id=updated_user.id,
+        username=updated_user.username,
+        display_name=updated_user.display_name,
+        email=updated_user.email,
+        avatar_url=updated_user.avatar_url,
+        created_at=updated_user.created_at
+    )
+
+@app.post("/api/users/me/avatar")
+async def upload_avatar(file: UploadFile = File(...), current_user: User = Depends(get_current_user)):
+    file_ext = os.path.splitext(file.filename)[1]
+    file_name = f"avatar_{current_user.id}_{uuid.uuid4()}{file_ext}"
+    file_path = os.path.join("uploads", file_name)
+
+    with open(file_path, "wb") as f:
+        content = await file.read()
+        f.write(content)
+
+    avatar_url = f"/uploads/{file_name}"
+    await update_user(current_user.id, avatar_url=avatar_url)
+
+    return {"avatar_url": avatar_url}
+
 @app.websocket("/ws/{room_id}")
-async def websocket_endpoint(websocket: WebSocket, room_id: str, username: str):
-    await manager.connect(websocket, room_id, username)
+async def websocket_endpoint(websocket: WebSocket, room_id: str, username: Optional[str] = None, token: Optional[str] = None):
+    # Determine user identity
+    display_username = username
+    user_id = None
+    is_guest = True
+
+    if token:
+        # Authenticated user
+        payload = verify_token(token)
+        if payload:
+            user_id = payload.get("user_id")
+            if user_id:
+                user = await get_user_by_id(user_id)
+                if user:
+                    display_username = user.display_name or user.username
+                    is_guest = False
+
+    if not display_username:
+        await websocket.close(code=1008)
+        return
+
+    await manager.connect(websocket, room_id, display_username)
 
     # Send join notification
     join_message = {
         "type": "system",
         "action": "join",
-        "username": username,
+        "username": display_username,
         "online_users": manager.get_online_users(room_id)
     }
     await manager.broadcast(join_message, room_id)
@@ -119,7 +261,7 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, username: str):
         leave_message = {
             "type": "system",
             "action": "leave",
-            "username": username,
+            "username": display_username,
             "online_users": manager.get_online_users(room_id)
         }
         await manager.broadcast(leave_message, room_id)

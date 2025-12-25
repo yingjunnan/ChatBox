@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
+import AuthModal from '../components/AuthModal.vue'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -9,6 +10,7 @@ const userStore = useUserStore()
 const rooms = ref([])
 const showCreateModal = ref(false)
 const showJoinModal = ref(false)
+const showAuthModal = ref(false)
 const newRoomName = ref('')
 const newRoomPassword = ref('')
 const joinRoomId = ref('')
@@ -104,32 +106,67 @@ function cancelEditUsername() {
   editingUsername.value = false
   tempUsername.value = ''
 }
+
+async function handleLogout() {
+  await userStore.logout()
+  await loadRooms()
+}
+
+function onAuthSuccess() {
+  loadRooms()
+}
 </script>
 
 <template>
   <div class="container mx-auto px-4 py-8">
     <div class="max-w-4xl mx-auto">
       <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
-        <h1 class="text-3xl font-bold text-gray-800 mb-2">聊天室</h1>
-        <div class="flex items-center justify-between gap-3">
-          <div class="flex items-center gap-2 flex-1">
-            <span class="text-gray-600">当前用户:</span>
-            <span v-if="!editingUsername" class="font-medium text-gray-800">{{ userStore.username }}</span>
-            <input v-else v-model="tempUsername" class="px-3 py-1 border rounded flex-1 max-w-xs" placeholder="输入用户名">
+        <h1 class="text-3xl font-bold text-gray-800 mb-4">聊天室</h1>
+
+        <!-- Authenticated User -->
+        <div v-if="userStore.isAuthenticated" class="flex items-center justify-between border-t pt-4">
+          <div class="flex items-center gap-3">
+            <div class="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold text-xl">
+              {{ userStore.displayName ? userStore.displayName[0].toUpperCase() : 'U' }}
+            </div>
+            <div>
+              <div class="font-medium text-gray-800">{{ userStore.displayName || userStore.username }}</div>
+              <div class="text-sm text-gray-500">@{{ userStore.username }}</div>
+            </div>
           </div>
-          <div class="flex gap-2">
-            <button v-if="!editingUsername" @click="startEditUsername" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 text-sm">
-              编辑
+          <button @click="handleLogout" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">
+            登出
+          </button>
+        </div>
+
+        <!-- Guest User -->
+        <div v-else>
+          <div class="flex items-center justify-between gap-3 mb-3">
+            <div class="flex items-center gap-2 flex-1">
+              <span class="text-gray-600">游客用户:</span>
+              <span v-if="!editingUsername" class="font-medium text-gray-800">{{ userStore.username }}</span>
+              <input v-else v-model="tempUsername" class="px-3 py-1 border rounded flex-1 max-w-xs" placeholder="输入用户名">
+            </div>
+            <div class="flex gap-2">
+              <button v-if="!editingUsername" @click="startEditUsername" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 text-sm">
+                编辑
+              </button>
+              <button v-if="editingUsername" @click="saveUsername" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 text-sm">
+                保存
+              </button>
+              <button v-if="editingUsername" @click="cancelEditUsername" class="bg-gray-400 text-white px-4 py-2 rounded hover:bg-gray-500 text-sm">
+                取消
+              </button>
+              <button @click="resetUsername" class="bg-orange-500 text-white px-4 py-2 rounded hover:bg-orange-600 text-sm">
+                随机生成
+              </button>
+            </div>
+          </div>
+          <div class="border-t pt-3">
+            <button @click="showAuthModal = true" class="w-full bg-gradient-to-r from-blue-500 to-purple-600 text-white px-6 py-3 rounded-lg hover:from-blue-600 hover:to-purple-700 font-medium">
+              登录 / 注册账号
             </button>
-            <button v-if="editingUsername" @click="saveUsername" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 text-sm">
-              保存
-            </button>
-            <button v-if="editingUsername" @click="cancelEditUsername" class="bg-gray-400 text-white px-4 py-2 rounded hover:bg-gray-500 text-sm">
-              取消
-            </button>
-            <button @click="resetUsername" class="bg-orange-500 text-white px-4 py-2 rounded hover:bg-orange-600 text-sm">
-              随机生成
-            </button>
+            <p class="text-xs text-gray-500 text-center mt-2">登录后可保存用户名、查看聊天历史</p>
           </div>
         </div>
       </div>
@@ -211,5 +248,7 @@ function cancelEditUsername() {
         </div>
       </div>
     </div>
+
+    <AuthModal :show="showAuthModal" @close="showAuthModal = false" @success="onAuthSuccess" />
   </div>
 </template>
