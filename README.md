@@ -18,6 +18,7 @@
   - 😊 表情选择器
   - 🖼️ 图片上传和预览
   - 🎥 视频上传和播放
+  - 👥 在线用户状态显示（实时显示聊天室人数）
 
 ## 🛠️ 技术栈
 
@@ -55,6 +56,206 @@ npm run dev
 ```
 
 前端应用运行在 `http://localhost:5173` 🌐
+
+## 🌍 部署指南
+
+### 部署到远程服务器
+
+#### 1️⃣ 准备服务器环境
+
+确保服务器已安装：
+- Python 3.8+
+- Node.js 16+
+- Nginx（可选，用于反向代理）
+
+#### 2️⃣ 部署后端
+
+```bash
+# 上传后端代码到服务器
+scp -r backend/ user@your-server:/path/to/chatbox/
+
+# SSH 登录服务器
+ssh user@your-server
+
+# 安装依赖
+cd /path/to/chatbox/backend
+pip install -r requirements.txt
+
+# 修改 main.py 中的 CORS 配置，允许前端域名访问
+# origins = ["http://your-frontend-domain.com"]
+
+# 使用 nohup 或 systemd 运行后端服务
+nohup python main.py > backend.log 2>&1 &
+```
+
+**使用 systemd 管理后端服务（推荐）**
+
+创建服务文件 `/etc/systemd/system/chatbox-backend.service`：
+
+```ini
+[Unit]
+Description=Chatbox Backend Service
+After=network.target
+
+[Service]
+Type=simple
+User=your-user
+WorkingDirectory=/path/to/chatbox/backend
+ExecStart=/usr/bin/python3 main.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+启动服务：
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable chatbox-backend
+sudo systemctl start chatbox-backend
+sudo systemctl status chatbox-backend
+```
+
+#### 3️⃣ 部署前端
+
+```bash
+# 本地构建前端
+cd frontend
+npm install
+npm run build
+
+# 上传构建产物到服务器
+scp -r dist/ user@your-server:/path/to/chatbox/frontend/
+
+# 配置 Nginx
+sudo nano /etc/nginx/sites-available/chatbox
+```
+
+Nginx 配置示例：
+
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+
+    # 前端静态文件
+    location / {
+        root /path/to/chatbox/frontend/dist;
+        try_files $uri $uri/ /index.html;
+    }
+
+    # 后端 API 代理
+    location /api/ {
+        proxy_pass http://localhost:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    # WebSocket 代理
+    location /ws/ {
+        proxy_pass http://localhost:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    # 上传文件访问
+    location /uploads/ {
+        alias /path/to/chatbox/backend/uploads/;
+    }
+}
+```
+
+启用站点并重启 Nginx：
+```bash
+sudo ln -s /etc/nginx/sites-available/chatbox /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl restart nginx
+```
+
+#### 4️⃣ 配置防火墙
+
+```bash
+# 开放 HTTP 端口
+sudo ufw allow 80
+sudo ufw allow 443  # 如果使用 HTTPS
+
+# 后端端口仅允许本地访问（已通过 Nginx 代理）
+sudo ufw deny 8000
+```
+
+#### 5️⃣ 配置 HTTPS（推荐）
+
+使用 Let's Encrypt 免费证书：
+
+```bash
+sudo apt install certbot python3-certbot-nginx
+sudo certbot --nginx -d your-domain.com
+```
+
+#### 6️⃣ 环境变量配置
+
+修改前端 API 地址（`frontend/src/views/Chat.vue` 和 `Home.vue`）：
+
+```javascript
+// 开发环境
+const API_URL = 'http://localhost:8000'
+const WS_URL = 'ws://localhost:8000'
+
+// 生产环境（修改为实际域名）
+const API_URL = 'https://your-domain.com'
+const WS_URL = 'wss://your-domain.com'
+```
+
+或使用环境变量：
+
+```javascript
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000'
+```
+
+创建 `.env.production` 文件：
+```
+VITE_API_URL=https://your-domain.com
+VITE_WS_URL=wss://your-domain.com
+```
+
+### Docker 部署（可选）
+
+创建 `docker-compose.yml`：
+
+```yaml
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/chatbox.db:/app/chatbox.db
+      - ./backend/uploads:/app/uploads
+    restart: always
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: always
+```
+
+部署命令：
+```bash
+docker-compose up -d
+```
 
 ## 📖 使用说明
 
@@ -281,7 +482,6 @@ rm -rf backend/uploads/*
 ## 📝 待办事项
 
 - [ ] 添加消息历史记录加载
-- [ ] 实现用户在线状态显示
 - [ ] 添加消息已读/未读状态
 - [ ] 支持消息撤回功能
 - [ ] 添加聊天室成员列表
