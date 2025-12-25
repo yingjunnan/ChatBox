@@ -154,6 +154,10 @@ function cancelEditUsername() {
                 <div class="flex items-center gap-2">
                   <h3 class="font-semibold text-gray-800">{{ room.name }}</h3>
                   <span v-if="room.has_password" class="text-yellow-600" title="需要密码">🔒</span>
+                  <span v-if="room.online_count > 0" class="flex items-center gap-1 text-green-600 text-sm">
+                    <span class="w-2 h-2 bg-green-500 rounded-full"></span>
+                    {{ room.online_count }} 在线
+                  </span>
                 </div>
                 <p class="text-sm text-gray-500">房间ID: {{ room.id }}</p>
               </div>

@@ -29,22 +29,29 @@ class RoomJoin(BaseModel):
 
 class ConnectionManager:
     def __init__(self):
-        self.active_connections: Dict[str, List[WebSocket]] = {}
+        self.active_connections: Dict[str, List[tuple[WebSocket, str]]] = {}
 
-    async def connect(self, websocket: WebSocket, room_id: str):
+    async def connect(self, websocket: WebSocket, room_id: str, username: str):
         await websocket.accept()
         if room_id not in self.active_connections:
             self.active_connections[room_id] = []
-        self.active_connections[room_id].append(websocket)
+        self.active_connections[room_id].append((websocket, username))
 
     def disconnect(self, websocket: WebSocket, room_id: str):
         if room_id in self.active_connections:
-            self.active_connections[room_id].remove(websocket)
+            self.active_connections[room_id] = [
+                (ws, user) for ws, user in self.active_connections[room_id] if ws != websocket
+            ]
+
+    def get_online_users(self, room_id: str) -> List[str]:
+        if room_id in self.active_connections:
+            return list(set([user for _, user in self.active_connections[room_id]]))
+        return []
 
     async def broadcast(self, message: dict, room_id: str):
         if room_id in self.active_connections:
-            for connection in self.active_connections[room_id]:
-                await connection.send_json(message)
+            for websocket, _ in self.active_connections[room_id]:
+                await websocket.send_json(message)
 
 manager = ConnectionManager()
 
@@ -60,7 +67,11 @@ async def create_new_room(room: RoomCreate):
 
 @app.get("/api/rooms")
 async def list_rooms():
-    return await get_rooms()
+    rooms = await get_rooms()
+    # Add online user count to each room
+    for room in rooms:
+        room["online_count"] = len(manager.get_online_users(room["id"]))
+    return rooms
 
 @app.post("/api/rooms/join")
 async def join_room(room_join: RoomJoin):
@@ -84,8 +95,18 @@ async def upload_file(file: UploadFile = File(...)):
     return {"url": f"/uploads/{file_name}"}
 
 @app.websocket("/ws/{room_id}")
-async def websocket_endpoint(websocket: WebSocket, room_id: str):
-    await manager.connect(websocket, room_id)
+async def websocket_endpoint(websocket: WebSocket, room_id: str, username: str):
+    await manager.connect(websocket, room_id, username)
+
+    # Send join notification
+    join_message = {
+        "type": "system",
+        "action": "join",
+        "username": username,
+        "online_users": manager.get_online_users(room_id)
+    }
+    await manager.broadcast(join_message, room_id)
+
     try:
         while True:
             data = await websocket.receive_json()
@@ -93,6 +114,15 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
             await manager.broadcast(data, room_id)
     except WebSocketDisconnect:
         manager.disconnect(websocket, room_id)
+
+        # Send leave notification
+        leave_message = {
+            "type": "system",
+            "action": "leave",
+            "username": username,
+            "online_users": manager.get_online_users(room_id)
+        }
+        await manager.broadcast(leave_message, room_id)
 
 if __name__ == "__main__":
     import uvicorn
