@@ -18,8 +18,8 @@ const notificationSound = ref(null)
 const enlargedImage = ref(null)
 const onlineUsers = ref([])
 
-const API_URL = 'http://localhost:8000'
-const WS_URL = 'ws://localhost:8000'
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000'
 
 const emojis = ['😀', '😂', '😍', '🥰', '😎', '🤔', '👍', '❤️', '🎉', '🔥', '✨', '💯', '👏', '🙌', '💪', '🎈']
 
@@ -35,7 +35,9 @@ onUnmounted(() => {
 })
 
 function connectWebSocket() {
-  ws.value = new WebSocket(`${WS_URL}/ws/${route.params.roomId}?username=${encodeURIComponent(userStore.username)}`)
+  // 如果 WS_URL 为空，根据当前页面协议动态构建 WebSocket URL
+  const wsBaseUrl = WS_URL || `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`
+  ws.value = new WebSocket(`${wsBaseUrl}/ws/${route.params.roomId}?username=${encodeURIComponent(userStore.username)}`)
 
   ws.value.onmessage = (event) => {
     const data = JSON.parse(event.data)

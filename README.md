@@ -201,30 +201,30 @@ sudo certbot --nginx -d your-domain.com
 
 #### 6️⃣ 环境变量配置
 
-修改前端 API 地址（`frontend/src/views/Chat.vue` 和 `Home.vue`）：
+前端已配置使用环境变量，无需手动修改代码。
 
-```javascript
-// 开发环境
-const API_URL = 'http://localhost:8000'
-const WS_URL = 'ws://localhost:8000'
-
-// 生产环境（修改为实际域名）
-const API_URL = 'https://your-domain.com'
-const WS_URL = 'wss://your-domain.com'
+**开发环境**（`.env.development`）：
+```
+VITE_API_URL=http://localhost:8000
+VITE_WS_URL=ws://localhost:8000
 ```
 
-或使用环境变量：
-
-```javascript
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000'
+**生产环境**（`.env.production`）：
+```
+# 使用空字符串表示通过 nginx 代理访问
+# API 请求会使用相对路径 /api/*
+# WebSocket 会根据当前页面协议自动选择 ws:// 或 wss://
+VITE_API_URL=
+VITE_WS_URL=
 ```
 
-创建 `.env.production` 文件：
+构建生产版本：
+```bash
+cd frontend
+npm run build
 ```
-VITE_API_URL=https://your-domain.com
-VITE_WS_URL=wss://your-domain.com
-```
+
+构建后的文件会输出到 `frontend/dist/` 目录，上传到服务器即可。
 
 ### Docker 部署（可选）
 
