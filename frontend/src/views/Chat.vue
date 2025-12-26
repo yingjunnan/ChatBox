@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
 
@@ -18,6 +18,10 @@ const notificationSound = ref(null)
 const enlargedImage = ref(null)
 const onlineUsers = ref([])
 const accessDenied = ref(false)
+
+const currentDisplayName = computed(() => {
+  return userStore.isAuthenticated ? (userStore.displayName || userStore.username) : userStore.username
+})
 
 const API_URL = import.meta.env.VITE_API_URL !== undefined ? import.meta.env.VITE_API_URL : 'http://localhost:8000'
 const WS_URL = import.meta.env.VITE_WS_URL !== undefined ? import.meta.env.VITE_WS_URL : 'ws://localhost:8000'
@@ -107,7 +111,7 @@ function connectWebSocket() {
       messages.value.push(data)
     }
 
-    if (data.username !== userStore.username && data.type !== 'system') {
+    if (data.username !== currentDisplayName.value && data.type !== 'system') {
       notificationSound.value?.play().catch(() => {})
     }
 
@@ -129,7 +133,7 @@ function sendMessage() {
   if (!messageInput.value.trim()) return
 
   const message = {
-    username: userStore.username,
+    username: currentDisplayName.value,
     content: messageInput.value,
     type: 'text'
   }
@@ -159,7 +163,7 @@ async function handleFileUpload(event) {
 
     const fileType = file.type.startsWith('image/') ? 'image' : 'video'
     const message = {
-      username: userStore.username,
+      username: currentDisplayName.value,
       content: `${API_URL}${data.url}`,
       type: fileType
     }
@@ -213,12 +217,12 @@ function leaveRoom() {
               </div>
             </div>
             <!-- User Messages -->
-            <div v-else class="flex" :class="msg.username === userStore.username ? 'justify-end' : 'justify-start'">
+            <div v-else class="flex" :class="msg.username === currentDisplayName ? 'justify-end' : 'justify-start'">
               <div class="max-w-xs lg:max-w-md">
-                <div class="text-xs text-gray-500 mb-1" :class="msg.username === userStore.username ? 'text-right' : 'text-left'">
+                <div class="text-xs text-gray-500 mb-1" :class="msg.username === currentDisplayName ? 'text-right' : 'text-left'">
                   {{ msg.username }}
                 </div>
-                <div class="rounded-lg p-3 shadow-sm" :class="msg.username === userStore.username ? 'bg-blue-500 text-white' : 'bg-white text-gray-800 border border-gray-200'">
+                <div class="rounded-lg p-3 shadow-sm" :class="msg.username === currentDisplayName ? 'bg-blue-500 text-white' : 'bg-white text-gray-800 border border-gray-200'">
                   <div v-if="msg.type === 'text'">{{ msg.content }}</div>
                   <img v-else-if="msg.type === 'image'" :src="msg.content" @click="openImage(msg.content)" class="max-w-full rounded cursor-pointer hover:opacity-90 transition" />
                   <video v-else-if="msg.type === 'video'" :src="msg.content" controls class="max-w-full rounded" />
