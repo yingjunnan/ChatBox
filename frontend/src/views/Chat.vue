@@ -17,6 +17,7 @@ const roomName = ref(route.query.name || route.params.roomId)
 const notificationSound = ref(null)
 const enlargedImage = ref(null)
 const onlineUsers = ref([])
+const accessDenied = ref(false)
 
 const API_URL = import.meta.env.VITE_API_URL !== undefined ? import.meta.env.VITE_API_URL : 'http://localhost:8000'
 const WS_URL = import.meta.env.VITE_WS_URL !== undefined ? import.meta.env.VITE_WS_URL : 'ws://localhost:8000'
@@ -57,8 +58,11 @@ async function loadHistoricalMessages() {
         scrollToBottom()
       })
     } else if (response.status === 403) {
-      alert('无权访问此房间，请先验证密码')
-      router.push('/')
+      if (!accessDenied.value) {
+        accessDenied.value = true
+        alert('无权访问此房间，请先验证密码')
+        router.push('/')
+      }
     }
   } catch (error) {
     console.error('Failed to load historical messages:', error)
@@ -112,13 +116,9 @@ function connectWebSocket() {
     })
   }
 
-  ws.value.onerror = () => {
-    alert('连接失败')
-    router.push('/')
-  }
-
   ws.value.onclose = (event) => {
-    if (event.code === 1008) {
+    if (event.code === 1008 && !accessDenied.value) {
+      accessDenied.value = true
       alert('无权访问此房间，请先验证密码')
       router.push('/')
     }
