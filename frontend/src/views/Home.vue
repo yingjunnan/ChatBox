@@ -45,6 +45,12 @@ async function createRoom() {
   showCreateModal.value = false
   newRoomName.value = ''
   newRoomPassword.value = ''
+
+  // Store room access token
+  if (room.room_access_token) {
+    sessionStorage.setItem(`room_token_${room.id}`, room.room_access_token)
+  }
+
   router.push(`/chat/${room.id}?name=${encodeURIComponent(room.name)}`)
 }
 
@@ -72,6 +78,12 @@ async function joinRoom(roomId, roomName = null, needPassword = false) {
       joinRoomPassword.value = ''
       joinRoomId.value = ''
       joinRoomName.value = ''
+
+      // Store room access token
+      if (data.room_access_token) {
+        sessionStorage.setItem(`room_token_${roomId}`, data.room_access_token)
+      }
+
       const name = roomName || data.room?.name || roomId
       router.push(`/chat/${roomId}?name=${encodeURIComponent(name)}`)
     } else {

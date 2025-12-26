@@ -43,13 +43,22 @@ onUnmounted(() => {
 
 async function loadHistoricalMessages() {
   try {
-    const response = await fetch(`${API_URL}/api/rooms/${route.params.roomId}/messages`)
+    const roomToken = sessionStorage.getItem(`room_token_${route.params.roomId}`)
+    const headers = {}
+    if (roomToken) {
+      headers['X-Room-Access-Token'] = roomToken
+    }
+
+    const response = await fetch(`${API_URL}/api/rooms/${route.params.roomId}/messages`, { headers })
     if (response.ok) {
       const historicalMessages = await response.json()
       messages.value = historicalMessages
       nextTick(() => {
         scrollToBottom()
       })
+    } else if (response.status === 403) {
+      alert('无权访问此房间，请先验证密码')
+      router.push('/')
     }
   } catch (error) {
     console.error('Failed to load historical messages:', error)
@@ -60,13 +69,21 @@ function connectWebSocket() {
   // 如果 WS_URL 为空，根据当前页面协议动态构建 WebSocket URL
   const wsBaseUrl = WS_URL || `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`
 
+  const roomToken = sessionStorage.getItem(`room_token_${route.params.roomId}`)
   let wsUrl
+
   if (userStore.isAuthenticated) {
-    // Authenticated user: send token
+    // Authenticated user: send token and room access token
     wsUrl = `${wsBaseUrl}/ws/${route.params.roomId}?token=${encodeURIComponent(userStore.accessToken)}`
+    if (roomToken) {
+      wsUrl += `&room_access_token=${encodeURIComponent(roomToken)}`
+    }
   } else {
-    // Guest user: send username
+    // Guest user: send username and room access token
     wsUrl = `${wsBaseUrl}/ws/${route.params.roomId}?username=${encodeURIComponent(userStore.username)}`
+    if (roomToken) {
+      wsUrl += `&room_access_token=${encodeURIComponent(roomToken)}`
+    }
   }
 
   ws.value = new WebSocket(wsUrl)
@@ -98,6 +115,13 @@ function connectWebSocket() {
   ws.value.onerror = () => {
     alert('连接失败')
     router.push('/')
+  }
+
+  ws.value.onclose = (event) => {
+    if (event.code === 1008) {
+      alert('无权访问此房间，请先验证密码')
+      router.push('/')
+    }
   }
 }
 

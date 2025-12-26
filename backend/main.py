@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException, Depends
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -6,12 +6,16 @@ import uuid
 import os
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
+import secrets
 from database import init_db, create_room, get_rooms, get_room, save_message, get_room_messages
 from models import RegisterRequest, LoginRequest, TokenResponse, UserResponse, UpdateProfileRequest, RefreshTokenRequest, User, ChangePasswordRequest
 from auth import hash_password, verify_password, create_access_token, create_refresh_token, verify_token
 from crud import create_user, get_user_by_username, get_user_by_id, update_user, save_refresh_token, verify_refresh_token, delete_refresh_token, change_password
 from dependencies import get_current_user, get_current_user_optional
 from config import REFRESH_TOKEN_EXPIRE_DAYS
+
+# Room access tokens storage (room_id -> set of valid tokens)
+room_access_tokens: Dict[str, set] = {}
 
 app = FastAPI()
 
@@ -69,7 +73,14 @@ async def startup():
 async def create_new_room(room: RoomCreate):
     room_id = str(uuid.uuid4())[:8]
     await create_room(room_id, room.name, room.password)
-    return {"id": room_id, "name": room.name}
+
+    # Generate room access token for creator
+    access_token = secrets.token_urlsafe(32)
+    if room_id not in room_access_tokens:
+        room_access_tokens[room_id] = set()
+    room_access_tokens[room_id].add(access_token)
+
+    return {"id": room_id, "name": room.name, "room_access_token": access_token}
 
 @app.get("/api/rooms")
 async def list_rooms():
@@ -86,10 +97,27 @@ async def join_room(room_join: RoomJoin):
         raise HTTPException(status_code=404, detail="Room not found")
     if room["password"] and room["password"] != room_join.password:
         raise HTTPException(status_code=403, detail="Invalid password")
-    return {"success": True, "room": room}
+
+    # Generate room access token
+    access_token = secrets.token_urlsafe(32)
+    if room_join.room_id not in room_access_tokens:
+        room_access_tokens[room_join.room_id] = set()
+    room_access_tokens[room_join.room_id].add(access_token)
+
+    return {"success": True, "room": room, "room_access_token": access_token}
 
 @app.get("/api/rooms/{room_id}/messages")
-async def get_messages(room_id: str, limit: int = 100):
+async def get_messages(room_id: str, limit: int = 100, room_access_token: Optional[str] = Header(None, alias="X-Room-Access-Token")):
+    # Check if room requires password
+    room = await get_room(room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    # If room has password, verify access token
+    if room["password"]:
+        if not room_access_token or room_id not in room_access_tokens or room_access_token not in room_access_tokens[room_id]:
+            raise HTTPException(status_code=403, detail="Access denied. Please join the room first.")
+
     messages = await get_room_messages(room_id, limit)
     return messages
 
@@ -238,7 +266,19 @@ async def change_user_password(request: ChangePasswordRequest, current_user: Use
     return {"success": True, "message": "密码修改成功"}
 
 @app.websocket("/ws/{room_id}")
-async def websocket_endpoint(websocket: WebSocket, room_id: str, username: Optional[str] = None, token: Optional[str] = None):
+async def websocket_endpoint(websocket: WebSocket, room_id: str, username: Optional[str] = None, token: Optional[str] = None, room_access_token: Optional[str] = None):
+    # Check if room requires password
+    room = await get_room(room_id)
+    if not room:
+        await websocket.close(code=1008, reason="Room not found")
+        return
+
+    # If room has password, verify access token
+    if room["password"]:
+        if not room_access_token or room_id not in room_access_tokens or room_access_token not in room_access_tokens[room_id]:
+            await websocket.close(code=1008, reason="Access denied. Please join the room first.")
+            return
+
     # Determine user identity
     display_username = username
     user_id = None
