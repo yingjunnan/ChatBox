@@ -1,6 +1,6 @@
 # 💬 聊天室应用
 
-一个基于 Vue 3 和 FastAPI 的实时聊天应用，支持游客模式和用户认证。
+一个基于 Vue 3 和 FastAPI 的实时聊天应用，支持游客模式和用户认证，提供丰富的聊天功能和良好的用户体验。
 
 ## ✨ 功能特性
 
@@ -9,30 +9,51 @@
   - 🎲 随机生成用户名（如：快乐的熊猫123）
   - ✏️ 手动自定义用户名
   - 💾 本地持久化存储
+  - 🔄 页面刷新后自动恢复用户名
+
 - **用户认证**（JWT Token）
   - 📝 用户注册（用户名 + 密码 + 可选显示名称和邮箱）
   - 🔐 用户登录
   - 👤 个人资料编辑（显示名称、邮箱）
-  - 🔑 密码修改
+  - 🔑 密码修改（需验证旧密码）
   - 🖼️ 头像上传
   - 🔄 自动 Token 刷新（24小时有效期）
+  - 🔄 Refresh Token 机制（30天有效期）
   - 📜 聊天记录关联到用户账户
+  - 🚫 安全登出（清除服务器端 Refresh Token）
 
 ### 🏠 聊天室管理
 - ➕ 创建聊天室（支持密码保护 🔒）
 - 📋 查看活跃聊天室列表
+  - 🌟 显示房间名称和ID
+  - 🔒 标识需要密码的房间
+  - 👥 显示当前在线人数
 - 🔑 直接输入房间ID加入
+- 🔐 房间密码验证机制
+- 🎫 房间访问令牌（加入密码保护的房间后获取）
 - 👥 实时显示在线用户数量
+- 📜 访问历史消息（需验证房间访问权限）
 
 ### 💬 实时通讯
 - ⚡ WebSocket 实时消息传输
 - 📝 发送文字消息
-- 😊 表情选择器（300+ 表情，分类显示）
-- 🖼️ 图片上传和预览（点击放大）
+- 😊 表情选择器（300+ 表情）
+  - 😃 基础表情
+  - 👋 手势表情
+  - 🌈 多样化选择
+- 🖼️ 图片上传和预览
+  - 🖱️ 点击放大查看
+  - 📱 响应式显示
 - 🎥 视频上传和播放
+  - ▶️ 内置播放器
+  - 📱 响应式显示
 - 📜 自动加载历史消息（最近100条）
 - 🔔 新消息声音提醒
 - 👥 在线用户状态显示
+  - 🟢 实时更新在线用户列表
+  - 📢 用户加入/离开系统通知
+  - 🏷️ 高亮显示当前用户
+- 🔄 自动重连机制（网络断开后）
 
 ## 🛠️ 技术栈
 
@@ -364,8 +385,8 @@ docker-compose up -d
 ```
 chatbox/
 ├── backend/
-│   ├── main.py              # FastAPI 主应用
-│   ├── database.py          # 数据库操作
+│   ├── main.py              # FastAPI 主应用（WebSocket、API端点）
+│   ├── database.py          # 数据库操作（初始化、消息、房间）
 │   ├── auth.py              # JWT 认证和密码加密
 │   ├── crud.py              # 用户 CRUD 操作
 │   ├── models.py            # Pydantic 数据模型
@@ -374,21 +395,32 @@ chatbox/
 │   ├── .env                 # 环境变量（需创建）
 │   ├── requirements.txt     # Python 依赖
 │   ├── chatbox.db           # SQLite 数据库
-│   └── uploads/             # 上传文件存储
+│   ├── uploads/             # 上传文件存储
+│   └── Dockerfile           # Docker 配置
 └── frontend/
     ├── src/
     │   ├── views/           # 页面组件
-    │   │   ├── Home.vue     # 首页（房间列表）
-    │   │   └── Chat.vue     # 聊天室页面
+    │   │   ├── Home.vue     # 首页（房间列表、创建/加入房间）
+    │   │   └── Chat.vue     # 聊天室页面（消息、表情、文件上传）
     │   ├── components/      # 可复用组件
     │   │   ├── AuthModal.vue         # 登录/注册模态框
     │   │   └── ProfileEditModal.vue  # 资料编辑模态框
     │   ├── stores/          # Pinia 状态管理
-    │   │   └── user.js      # 用户状态（游客/认证）
+    │   │   └── user.js      # 用户状态（游客/认证、Token管理）
     │   ├── router/          # Vue Router 配置
+    │   ├── assets/          # 静态资源
     │   ├── App.vue          # 根组件
-    │   └── main.js          # 入口文件
-    └── package.json         # npm 依赖
+    │   ├── main.js          # 入口文件
+    │   └── style.css        # 全局样式
+    ├── public/              # 公共资源
+    │   └── new-notification.mp3  # 新消息提示音
+    ├── index.html           # HTML 入口
+    ├── package.json         # npm 依赖
+    ├── vite.config.js       # Vite 配置
+    ├── tailwind.config.js   # Tailwind CSS 配置
+    ├── postcss.config.js    # PostCSS 配置
+    ├── nginx.conf           # Nginx 配置（生产环境）
+    └── Dockerfile           # Docker 配置
 ```
 
 ## 🔧 开发指引
@@ -451,39 +483,39 @@ FOREIGN KEY (room_id) REFERENCES rooms (id)
 ### API 端点
 
 #### 认证相关
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/api/auth/register` | 用户注册 |
-| POST | `/api/auth/login` | 用户登录 |
-| POST | `/api/auth/refresh` | 刷新 Access Token |
-| POST | `/api/auth/logout` | 登出（删除 Refresh Token） |
+| 方法 | 路径 | 说明 | 请求体 |
+|------|------|------|--------|
+| POST | `/api/auth/register` | 用户注册 | `username`, `password`, `display_name`(可选), `email`(可选) |
+| POST | `/api/auth/login` | 用户登录 | `username`, `password` |
+| POST | `/api/auth/refresh` | 刷新 Access Token | `refresh_token` |
+| POST | `/api/auth/logout` | 登出（删除 Refresh Token） | `refresh_token` |
 
 #### 用户相关
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/users/me` | 获取当前用户信息 |
-| PUT | `/api/users/me` | 更新用户资料 |
-| POST | `/api/users/me/avatar` | 上传头像 |
-| POST | `/api/users/me/password` | 修改密码 |
+| 方法 | 路径 | 说明 | 请求体 |
+|------|------|------|--------|
+| GET | `/api/users/me` | 获取当前用户信息 | 无 |
+| PUT | `/api/users/me` | 更新用户资料 | `display_name`(可选), `email`(可选) |
+| POST | `/api/users/me/avatar` | 上传头像 | `file` (multipart/form-data) |
+| POST | `/api/users/me/password` | 修改密码 | `old_password`, `new_password` |
 
 #### 聊天室相关
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/api/rooms` | 创建聊天室 |
-| GET | `/api/rooms` | 获取聊天室列表 |
-| POST | `/api/rooms/join` | 验证并加入聊天室 |
-| GET | `/api/rooms/{room_id}/messages` | 获取房间历史消息 |
+| 方法 | 路径 | 说明 | 请求体 |
+|------|------|------|--------|
+| POST | `/api/rooms` | 创建聊天室 | `name`, `password`(可选) |
+| GET | `/api/rooms` | 获取聊天室列表（含在线人数） | 无 |
+| POST | `/api/rooms/join` | 验证并加入聊天室 | `room_id`, `password`(可选) |
+| GET | `/api/rooms/{room_id}/messages` | 获取房间历史消息 | 头部: `X-Room-Access-Token`(密码保护房间需要) |
 
 #### 文件上传
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/api/upload` | 上传文件（图片/视频） |
+| 方法 | 路径 | 说明 | 请求体 |
+|------|------|------|--------|
+| POST | `/api/upload` | 上传文件（图片/视频） | `file` (multipart/form-data) |
 
 #### WebSocket
-| 协议 | 路径 | 说明 |
-|------|------|------|
-| WS | `/ws/{room_id}?username=xxx` | 游客连接 |
-| WS | `/ws/{room_id}?token=xxx` | 认证用户连接 |
+| 协议 | 路径 | 说明 | 参数 |
+|------|------|------|--------|
+| WS | `/ws/{room_id}` | 游客连接 | `username`, `room_access_token`(密码保护房间需要) |
+| WS | `/ws/{room_id}` | 认证用户连接 | `token`, `room_access_token`(密码保护房间需要) |
 
 ### WebSocket 消息格式
 
@@ -735,17 +767,37 @@ asyncio.run(reset_password("username", "newpassword"))
 
 ## 📝 待办事项
 
-- [x] 用户认证系统（JWT）
+### ✅ 已完成功能
+- [x] 用户认证系统（JWT + Refresh Token）
+- [x] 游客模式（随机/自定义用户名）
 - [x] 聊天历史记录加载
 - [x] Token 自动刷新
 - [x] 表情选择器扩展（300+ 表情）
+- [x] 图片上传与预览
+- [x] 视频上传与播放
+- [x] 房间密码保护机制
+- [x] 房间访问令牌系统
+- [x] 在线用户列表
+- [x] 用户加入/离开通知
+- [x] 新消息声音提醒
+- [x] 用户资料编辑
+- [x] 密码修改功能
+- [x] 头像上传功能
+- [x] 安全登出机制
+- [x] WebSocket 自动重连
+
+### 🚧 计划中功能
 - [ ] 消息已读/未读状态
 - [ ] 支持消息撤回功能
-- [ ] 添加聊天室成员列表
+- [ ] 添加聊天室成员列表（管理员功能）
 - [ ] 实现私聊功能
 - [ ] 消息搜索功能
 - [ ] 文件下载功能
-- [ ] 多语言支持
+- [ ] 多语言支持（国际化）
+- [ ] 消息加密传输
+- [ ] 聊天室管理员权限
+- [ ] 用户封禁系统
+- [ ] 消息举报功能
 
 ## 🤝 贡献指南
 
