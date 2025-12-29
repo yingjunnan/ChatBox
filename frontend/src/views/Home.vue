@@ -129,6 +129,26 @@ async function handleLogout() {
 function onAuthSuccess() {
   loadRooms()
 }
+
+function getTimeDuration(createdAt) {
+  const now = new Date()
+  const created = new Date(createdAt)
+  const diff = now - created
+  const seconds = Math.floor(diff / 1000)
+  const minutes = Math.floor(seconds / 60)
+  const hours = Math.floor(minutes / 60)
+  const days = Math.floor(hours / 24)
+
+  if (days > 0) return `${days}天`
+  if (hours > 0) return `${hours}小时`
+  if (minutes > 0) return `${minutes}分钟`
+  return `${seconds}秒`
+}
+
+function formatDateTime(createdAt) {
+  const date = new Date(createdAt)
+  return date.toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
 </script>
 
 <template>
@@ -216,6 +236,7 @@ function onAuthSuccess() {
                   </span>
                 </div>
                 <p class="text-sm text-gray-500">房间ID: {{ room.id }}</p>
+                <p class="text-xs text-gray-400">创建于: {{ formatDateTime(room.created_at) }} ({{ getTimeDuration(room.created_at) }}前)</p>
               </div>
             </div>
             <button @click="joinRoom(room.id, room.name, room.has_password)" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
