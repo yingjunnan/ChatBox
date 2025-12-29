@@ -105,9 +105,13 @@ function connectWebSocket() {
       messages.value.push({
         type: 'system',
         content: data.action === 'join' ? `${data.username} 加入了聊天室` : `${data.username} 离开了聊天室`,
-        username: 'System'
+        username: 'System',
+        timestamp: new Date().toISOString()
       })
     } else {
+      if (!data.timestamp) {
+        data.timestamp = new Date().toISOString()
+      }
       messages.value.push(data)
     }
 
@@ -150,7 +154,10 @@ function insertEmoji(emoji) {
 async function handleFileUpload(event) {
   const file = event.target.files[0]
   if (!file) return
+  await uploadFile(file)
+}
 
+async function uploadFile(file) {
   const formData = new FormData()
   formData.append('file', file)
 
@@ -174,6 +181,20 @@ async function handleFileUpload(event) {
   }
 }
 
+async function handlePaste(event) {
+  const items = event.clipboardData?.items
+  if (!items) return
+
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      event.preventDefault()
+      const file = item.getAsFile()
+      if (file) await uploadFile(file)
+      break
+    }
+  }
+}
+
 function scrollToBottom() {
   if (messagesContainer.value) {
     messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
@@ -190,6 +211,12 @@ function closeImage() {
 
 function leaveRoom() {
   router.push('/')
+}
+
+function formatMessageTime(timestamp) {
+  if (!timestamp) return ''
+  const date = new Date(timestamp)
+  return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
 }
 </script>
 
@@ -219,8 +246,9 @@ function leaveRoom() {
             <!-- User Messages -->
             <div v-else class="flex" :class="msg.username === currentDisplayName ? 'justify-end' : 'justify-start'">
               <div class="max-w-xs lg:max-w-md">
-                <div class="text-xs text-gray-500 mb-1" :class="msg.username === currentDisplayName ? 'text-right' : 'text-left'">
-                  {{ msg.username }}
+                <div class="text-xs text-gray-500 mb-1 flex items-center gap-2" :class="msg.username === currentDisplayName ? 'justify-end' : 'justify-start'">
+                  <span>{{ msg.username }}</span>
+                  <span class="text-gray-400">{{ formatMessageTime(msg.timestamp) }}</span>
                 </div>
                 <div class="rounded-lg p-3 shadow-sm" :class="msg.username === currentDisplayName ? 'bg-blue-500 text-white' : 'bg-white text-gray-800 border border-gray-200'">
                   <div v-if="msg.type === 'text'">{{ msg.content }}</div>
@@ -249,7 +277,7 @@ function leaveRoom() {
               📎
             </button>
             <input ref="fileInput" type="file" accept="image/*,video/*" @change="handleFileUpload" class="hidden" />
-            <input v-model="messageInput" @keyup.enter="sendMessage" placeholder="输入消息..." class="flex-1 px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <input v-model="messageInput" @keyup.enter="sendMessage" @paste="handlePaste" placeholder="输入消息..." class="flex-1 px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500" />
             <button @click="sendMessage" class="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600">
               发送
             </button>
