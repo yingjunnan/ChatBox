@@ -25,6 +25,7 @@ async def init_db():
                 created_at TEXT NOT NULL,
                 user_id INTEGER,
                 is_guest BOOLEAN DEFAULT 1,
+                is_recalled BOOLEAN DEFAULT 0,
                 FOREIGN KEY (room_id) REFERENCES rooms (id)
             )
         """)
@@ -60,6 +61,10 @@ async def init_db():
             pass
         try:
             await db.execute("ALTER TABLE messages ADD COLUMN is_guest BOOLEAN DEFAULT 1")
+        except:
+            pass
+        try:
+            await db.execute("ALTER TABLE messages ADD COLUMN is_recalled BOOLEAN DEFAULT 0")
         except:
             pass
         try:
@@ -102,23 +107,53 @@ async def get_room(room_id: str):
 
 async def save_message(room_id: str, username: str, content: str, message_type: str, user_id: int = None, is_guest: bool = True):
     async with aiosqlite.connect(DATABASE) as db:
-        await db.execute(
+        cursor = await db.execute(
             "INSERT INTO messages (room_id, username, content, message_type, created_at, user_id, is_guest) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (room_id, username, content, message_type, datetime.now().isoformat(), user_id, is_guest)
         )
         await db.commit()
+        return cursor.lastrowid
 
 async def get_room_messages(room_id: str, limit: int = 100):
     async with aiosqlite.connect(DATABASE) as db:
         async with db.execute(
-            "SELECT username, content, message_type, created_at FROM messages WHERE room_id = ? ORDER BY created_at DESC LIMIT ?",
+            "SELECT id, username, content, message_type, created_at, is_recalled FROM messages WHERE room_id = ? ORDER BY created_at DESC LIMIT ?",
             (room_id, limit)
         ) as cursor:
             rows = await cursor.fetchall()
             messages = [{
-                "username": row[0],
-                "content": row[1],
-                "type": row[2],
-                "timestamp": row[3]
+                "id": row[0],
+                "username": row[1],
+                "content": row[2],
+                "type": row[3],
+                "timestamp": row[4],
+                "is_recalled": bool(row[5])
             } for row in rows]
             return list(reversed(messages))
+
+async def get_message(message_id: int):
+    async with aiosqlite.connect(DATABASE) as db:
+        async with db.execute(
+            "SELECT id, room_id, username, user_id, created_at, is_recalled FROM messages WHERE id = ?",
+            (message_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                return {
+                    "id": row[0],
+                    "room_id": row[1],
+                    "username": row[2],
+                    "user_id": row[3],
+                    "created_at": row[4],
+                    "is_recalled": bool(row[5])
+                }
+            return None
+
+async def recall_message(message_id: int):
+    async with aiosqlite.connect(DATABASE) as db:
+        await db.execute(
+            "UPDATE messages SET is_recalled = 1 WHERE id = ?",
+            (message_id,)
+        )
+        await db.commit()
+

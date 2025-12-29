@@ -108,6 +108,12 @@ function connectWebSocket() {
         username: 'System',
         timestamp: new Date().toISOString()
       })
+    } else if (data.type === 'recall') {
+      // Handle message recall
+      const msgIndex = messages.value.findIndex(m => m.id === data.message_id)
+      if (msgIndex !== -1) {
+        messages.value[msgIndex].is_recalled = true
+      }
     } else {
       if (!data.timestamp) {
         data.timestamp = new Date().toISOString()
@@ -218,6 +224,45 @@ function formatMessageTime(timestamp) {
   const date = new Date(timestamp)
   return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
 }
+
+function canRecallMessage(msg) {
+  if (msg.username !== currentDisplayName.value) return false
+  if (msg.is_recalled) return false
+  if (!msg.timestamp) return false
+  const messageTime = new Date(msg.timestamp)
+  const now = new Date()
+  const diffMinutes = (now - messageTime) / 1000 / 60
+  return diffMinutes < 2
+}
+
+async function recallMessage(msg) {
+  if (!confirm('确定要撤回这条消息吗？')) return
+
+  try {
+    const params = new URLSearchParams()
+    if (!userStore.isAuthenticated) {
+      params.append('username', userStore.username)
+    }
+
+    const headers = {}
+    if (userStore.isAuthenticated) {
+      headers['Authorization'] = `Bearer ${userStore.accessToken}`
+    }
+
+    const response = await fetch(`${API_URL}/api/messages/${msg.id}?${params}`, {
+      method: 'DELETE',
+      headers
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      alert(error.detail || '撤回失败')
+    }
+  } catch (error) {
+    console.error('Failed to recall message:', error)
+    alert('撤回失败')
+  }
+}
 </script>
 
 <template>
@@ -251,9 +296,15 @@ function formatMessageTime(timestamp) {
                   <span class="text-gray-400">{{ formatMessageTime(msg.timestamp) }}</span>
                 </div>
                 <div class="rounded-lg p-3 shadow-sm" :class="msg.username === currentDisplayName ? 'bg-blue-500 text-white' : 'bg-white text-gray-800 border border-gray-200'">
-                  <div v-if="msg.type === 'text'">{{ msg.content }}</div>
-                  <img v-else-if="msg.type === 'image'" :src="msg.content" @click="openImage(msg.content)" class="max-w-full rounded cursor-pointer hover:opacity-90 transition" />
-                  <video v-else-if="msg.type === 'video'" :src="msg.content" controls class="max-w-full rounded" />
+                  <div v-if="msg.is_recalled" class="text-gray-400 italic">消息已撤回</div>
+                  <div v-else>
+                    <div v-if="msg.type === 'text'">{{ msg.content }}</div>
+                    <img v-else-if="msg.type === 'image'" :src="msg.content" @click="openImage(msg.content)" class="max-w-full rounded cursor-pointer hover:opacity-90 transition" />
+                    <video v-else-if="msg.type === 'video'" :src="msg.content" controls class="max-w-full rounded" />
+                  </div>
+                </div>
+                <div v-if="canRecallMessage(msg)" class="text-xs mt-1 flex justify-end">
+                  <button @click="recallMessage(msg)" class="text-gray-500 hover:text-red-500">撤回</button>
                 </div>
               </div>
             </div>

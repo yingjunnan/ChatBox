@@ -7,7 +7,7 @@ import os
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 import secrets
-from database import init_db, create_room, get_rooms, get_room, save_message, get_room_messages
+from database import init_db, create_room, get_rooms, get_room, save_message, get_room_messages, get_message, recall_message
 from models import RegisterRequest, LoginRequest, TokenResponse, UserResponse, UpdateProfileRequest, RefreshTokenRequest, User, ChangePasswordRequest
 from auth import hash_password, verify_password, create_access_token, create_refresh_token, verify_token
 from crud import create_user, get_user_by_username, get_user_by_id, update_user, save_refresh_token, verify_refresh_token, delete_refresh_token, change_password
@@ -265,6 +265,39 @@ async def change_user_password(request: ChangePasswordRequest, current_user: Use
 
     return {"success": True, "message": "密码修改成功"}
 
+@app.delete("/api/messages/{message_id}")
+async def recall_message_endpoint(message_id: int, username: Optional[str] = None, current_user: Optional[User] = Depends(get_current_user_optional)):
+    message = await get_message(message_id)
+    if not message:
+        raise HTTPException(status_code=404, detail="Message not found")
+
+    if message["is_recalled"]:
+        raise HTTPException(status_code=400, detail="Message already recalled")
+
+    # Check if user has permission to recall (must be message owner)
+    if current_user:
+        if message["user_id"] != current_user.id:
+            raise HTTPException(status_code=403, detail="You can only recall your own messages")
+    else:
+        if not username or message["username"] != username:
+            raise HTTPException(status_code=403, detail="You can only recall your own messages")
+
+    # Check time limit (2 minutes)
+    message_time = datetime.fromisoformat(message["created_at"])
+    if datetime.now() - message_time > timedelta(minutes=2):
+        raise HTTPException(status_code=400, detail="Can only recall messages within 2 minutes")
+
+    await recall_message(message_id)
+
+    # Broadcast recall notification
+    recall_notification = {
+        "type": "recall",
+        "message_id": message_id
+    }
+    await manager.broadcast(recall_notification, message["room_id"])
+
+    return {"success": True}
+
 @app.websocket("/ws/{room_id}")
 async def websocket_endpoint(websocket: WebSocket, room_id: str, username: Optional[str] = None, token: Optional[str] = None, room_access_token: Optional[str] = None):
     # Check if room requires password
@@ -313,7 +346,8 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, username: Optio
     try:
         while True:
             data = await websocket.receive_json()
-            await save_message(room_id, data["username"], data["content"], data["type"], user_id, is_guest)
+            message_id = await save_message(room_id, data["username"], data["content"], data["type"], user_id, is_guest)
+            data["id"] = message_id
             await manager.broadcast(data, room_id)
     except WebSocketDisconnect:
         manager.disconnect(websocket, room_id)
