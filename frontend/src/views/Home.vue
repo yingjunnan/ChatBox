@@ -270,10 +270,6 @@ function formatDateTime(createdAt) {
       <div class="bg-white rounded-lg p-6 w-96">
         <h2 class="text-xl font-bold mb-4">加入聊天室</h2>
         <div class="mb-3">
-          <label class="block text-sm text-gray-600 mb-1">房间名称</label>
-          <input v-model="joinRoomName" readonly class="w-full px-4 py-2 border rounded bg-gray-50">
-        </div>
-        <div class="mb-3">
           <label class="block text-sm text-gray-600 mb-1">房间ID</label>
           <input v-model="joinRoomId" :readonly="joinRoomId !== ''" :placeholder="joinRoomId ? '' : '房间ID'" class="w-full px-4 py-2 border rounded" :class="joinRoomId ? 'bg-gray-50' : ''">
         </div>
